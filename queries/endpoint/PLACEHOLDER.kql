@@ -1,0 +1,3 @@
+// Placeholder query: find suspicious PowerShell
+DeviceProcessEvents
+| where ProcessCommandLine contains "-EncodedCommand"

@@ -1,0 +1,6 @@
+## 🕵️‍♂️ Query Description
+_What threat‑hunting use case does this address?_
+
+## 📄 Query
+```kql
+// Paste your Kusto Query here

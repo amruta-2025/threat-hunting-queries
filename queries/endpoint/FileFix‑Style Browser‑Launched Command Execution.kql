@@ -1,0 +1,9 @@
+let MonitoredCommands = dynamic(["powershell", "pwsh", "regsvr32", "bitsadmin", "certutil", "mshta"]);
+let ParentProcessList = dynamic(["chrome", "msedge", "firefox", "brave", "explorer"]);
+DeviceProcessEvents
+| where Timestamp > ago(30d)
+| where FileName has_any(MonitoredCommands)
+| where InitiatingProcessFileName has_any(ParentProcessList)
+| where ProcessCommandLine has_any ("-EncodedCommand", "-enc", "-nop", "-NoProfile", "-w hidden", "-WindowStyle Hidden", "-ExecutionPolicy Bypass", "bypass", "Invoke-WebRequest", "iwr", "DownloadString", "iex", "Invoke-Expression", "Invoke-Obfuscation", "Add-MpPreference", "Start-Process")
+| project Timestamp, DeviceName, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine, AccountName
+| order by Timestamp desc

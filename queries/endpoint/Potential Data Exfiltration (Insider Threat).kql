@@ -1,0 +1,42 @@
+// Define personal email domains
+let personalDomains = dynamic(["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "icloud.com", "protonmail.com"]);
+// Step 1: Get latest disable event per user
+let latestDisables = AuditLogs
+| where OperationName =~ "Disable account"
+| mv-expand TargetResources
+| extend AccountUPN = tostring(TargetResources.userPrincipalName)
+| where isnotempty(AccountUPN)
+| summarize DisabledTime = max(TimeGenerated) by AccountUPN;
+// Step 2: Get last sign-in time per user
+let lastSignIns = SigninLogs
+| summarize LastSignIn = max(TimeGenerated) by UserPrincipalName;
+// Step 3: Join to keep only users who signed in on the same day as being disabled
+let validDisables = latestDisables
+| join kind=inner (
+lastSignIns
+) on $left.AccountUPN == $right.UserPrincipalName
+| where startofday(DisabledTime) == startofday(LastSignIn)
+| project AccountUPN, DisabledTime, LastSignIn;
+// Step 4: Correlate outbound emails to personal domains within 30 days of disable
+EmailEvents
+| where EmailDirection == "Outbound"
+| extend RecipientDomain = tostring(split(RecipientEmailAddress, "@")[1])
+| where RecipientDomain in~ (personalDomains)
+| join kind=inner (
+validDisables
+) on $left.SenderFromAddress == $right.AccountUPN
+| where TimeGenerated between (DisabledTime -30d .. DisabledTime)
+| extend DaysBeforeDisable = datetime_diff('day', DisabledTime, TimeGenerated)
+| summarize
+AttachmentsSent = countif(AttachmentCount > 0),
+TotalEmailsSent = count(),
+FirstSeen = min(TimeGenerated),
+LastSeen = max(TimeGenerated),
+ActiveDays = dcount(bin(TimeGenerated, 1d)),
+PersonalDomainsContacted = make_set(RecipientDomain)
+by UserPrincipalName = SenderFromAddress, DisabledTime, LastSignIn
+| extend
+DaysBeforeDisableStart = datetime_diff('day', DisabledTime, FirstSeen),
+ActivityDurationDays = datetime_diff('day', LastSeen, FirstSeen)
+| where AttachmentsSent > 0
+| sort by TotalEmailsSent desc
